@@ -2,11 +2,37 @@
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `ci.yml` | push to `main`, PR, called by release | buf format/lint/breaking on `proto/`, `_gen/` up to date, pytest on Python 3.10–3.14, pytest with the lowest protobuf (5.29.3), mypy, compile + roundtrip for every language with an e2e project |
+| `ci.yml` | push to any branch, PR, called by release | buf format/lint/breaking on `proto/`, `_gen/` up to date, pytest on Python 3.10–3.14, pytest with the lowest protobuf (5.29.3), mypy, compile + roundtrip for every language with an e2e project |
 | `nightly.yml` | daily 02:17 UTC, manual | pytest against the newest `fory-compiler` (ignores the pin), full writer × reader roundtrip matrix |
 | `release.yml` | tag `v*` | runs CI, checks tag == version, `uv build`, publishes to PyPI (trusted publishing), `buf push` to the BSR, GitHub release |
 
 Branch protection only needs `CI OK`.
+
+## Build versions and changelog
+
+Every CI run builds the package and uploads it as artifact `dist-<version>`:
+
+| Ref | Version |
+|---|---|
+| `main` | version from `pyproject.toml`, e.g. `0.1.0` |
+| other branch / PR | `<version>+<branch>.<run number>`, e.g. `0.1.0+feature.foo.42` |
+| tag `v*` (release) | version from `pyproject.toml` |
+
+The branch name is lowercased and every run of other characters becomes `.`,
+as PEP 440 requires (`-` in a local label is normalized to `.` anyway).
+Local versions cannot be uploaded to PyPI, so branch builds never get there.
+Logic: `scripts/ci/build_version.py`.
+
+`CHANGELOG.md` (Keep a Changelog) must have a section for the version in
+`pyproject.toml`, or CI fails. For a release the section needs a date
+(`## [0.1.0] - 2026-12-01`), and its text becomes the GitHub release notes.
+Logic: `scripts/ci/changelog.py`.
+
+Releasing:
+
+1. In `CHANGELOG.md`, replace `Unreleased` with the date, and start the next
+   version's section if you like.
+2. Commit, then `git tag v<version>` and push the tag.
 
 ## What the tests cover
 

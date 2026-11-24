@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Every branch gets a build: main as the plain version, others as
+    # <version>+<branch>.<run number> (see scripts/ci/build_version.py).
+    branches: ["**"]
   pull_request:
   workflow_call:
   workflow_dispatch:
@@ -138,10 +140,57 @@ jobs:
           languages: ${{ matrix.writer }},${{ matrix.reader }}
       - run: scripts/ci/roundtrip.sh ${{ matrix.writer }} ${{ matrix.reader }}
 
+  build:
+    name: build package (${{ needs.version.outputs.version }})
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0 # upstream has no floating major tag
+      - name: Set build version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: uv version "$VERSION" --frozen
+      - run: uv build
+      - name: Smoke test the wheel
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          out="$(uv run --isolated --no-project --with dist/*.whl -- protoc-gen-fory --version)"
+          echo "$out"
+          [[ "$out" == "protoc-gen-fory $VERSION "* ]]
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ needs.version.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+  version:
+    name: Build version and changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0 # upstream has no floating major tag
+      - id: v
+        env:
+          # PRs build the head branch; tags (release) keep the plain version.
+          BRANCH: ${{ github.ref_type == 'tag' && 'main' || github.head_ref || github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          base="$(uv version --short)"
+          version="$(python3 -I scripts/ci/build_version.py "$base" "$BRANCH" "$RUN_NUMBER")"
+          echo "version=$version" | tee -a "$GITHUB_OUTPUT"
+      - name: CHANGELOG.md has a section for the version
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: python3 -I scripts/ci/changelog.py check "$VERSION"
+
   # Single required check for branch protection.
   ci-ok:
     name: CI OK
-    needs: [detect, buf, test, lowest, typecheck, compile, roundtrip]
+    needs: [detect, buf, test, lowest, typecheck, compile, roundtrip, version, build]
     if: always()
     runs-on: ubuntu-latest
     steps:

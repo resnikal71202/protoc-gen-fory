@@ -185,4 +185,5 @@ Layout:
 | `tests/test_golden.py` | plugin output == foryc output, per fixture and language |
 | `tests/e2e/` | generated code against the Fory runtimes (compile + roundtrip) |
 
-CI is described in [.github/CI.md](.github/CI.md).
+CI, build versions and the release process are described in [.github/CI.md](.github/CI.md).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md).

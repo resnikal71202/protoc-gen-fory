@@ -48,7 +48,7 @@ packages = ["src/protoc_gen_fory"]
 "proto/fory/options.proto" = "protoc_gen_fory/fory/options.proto"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "proto", "tests", "README.md", "LICENSE", "buf.gen.yaml"]
+include = ["src", "proto", "tests", "README.md", "CHANGELOG.md", "LICENSE", "buf.gen.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

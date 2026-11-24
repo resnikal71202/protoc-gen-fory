@@ -34,6 +34,16 @@ jobs:
             echo "::error::tag $TAG does not match pyproject.toml version $version"
             exit 1
           fi
+      - name: CHANGELOG.md has a dated section for the version
+        run: |
+          version="$(uv version --short)"
+          python3 -I scripts/ci/changelog.py release "$version"
+          python3 -I scripts/ci/changelog.py notes "$version" > dist-notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: dist-notes.md
+          if-no-files-found: error
       - run: uv build
       - name: Smoke test the wheel
         run: |
@@ -99,7 +109,11 @@ jobs:
         with:
           name: dist
           path: dist/
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
       - env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+        # Notes are the version's CHANGELOG.md section.
+        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file dist-notes.md
