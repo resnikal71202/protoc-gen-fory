@@ -1,0 +1,68 @@
+[project]
+name = "protoc-gen-fory"
+version = "0.1.0"
+description = "buf / protoc plugin that generates Apache Fory code from .proto files"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+# fory-compiler uses PEP 604 annotations (str | None) at runtime.
+requires-python = ">=3.10"
+dependencies = [
+    # Exact pin: the adapter builds fory_compiler's internal ProtoSchema AST.
+    "fory-compiler==1.7.8",
+    # _gen/ is generated for protobuf 5.29 (see buf.gen.yaml).
+    "protobuf>=5.29.3,<8",
+]
+keywords = ["protobuf", "buf", "protoc", "fory", "serialization", "codegen"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Code Generators",
+]
+
+[project.urls]
+Repository = "https://github.com/resnikal71202/protoc-gen-fory"
+
+[project.scripts]
+protoc-gen-fory = "protoc_gen_fory.__main__:main"
+protoc-gen-fory-migrate = "protoc_gen_fory.migrate:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "mypy>=1.13",
+    "types-protobuf>=7.35.1.20261122",
+]
+e2e = [
+    "pyfory==1.7.8",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/protoc_gen_fory"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# Shipped so users can vendor it: protoc-gen-fory --options-proto
+"proto/fory/options.proto" = "protoc_gen_fory/fory/options.proto"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "proto", "tests", "README.md", "LICENSE", "buf.gen.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "roundtrip: cross-language serialization roundtrip (needs language toolchains)",
+    "needs_buf: needs the buf CLI on PATH (skipped otherwise)",
+]
+
+[tool.mypy]
+files = ["src/protoc_gen_fory"]
+exclude = ["src/protoc_gen_fory/_gen/"]
+python_version = "3.10"
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["fory_compiler.*"]
+ignore_missing_imports = true

@@ -1,0 +1,11 @@
+# buf module with the Fory option declarations.
+# Before the first `buf push`, set `name` to the BSR module, e.g.:
+#   name: buf.build/<org>/fory-options
+version: v2
+lint:
+  use: [STANDARD]
+  except:
+    # The package must be exactly `fory` so options read `(fory.field).ref`.
+    - PACKAGE_VERSION_SUFFIX
+breaking:
+  use: [FILE]

@@ -1,0 +1,60 @@
+name: Setup protoc-gen-fory toolchain
+description: >
+  Installs uv, Python, buf and the project venv, plus the toolchains for the
+  requested target languages (rust, java, go, python, javascript).
+
+inputs:
+  languages:
+    description: Comma-separated target languages whose toolchains are needed, e.g. "java,go". Empty = none.
+    required: false
+    default: ""
+  python-version:
+    description: Python version for the project venv.
+    required: false
+    default: "3.12"
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv and Python ${{ inputs.python-version }}
+      uses: astral-sh/setup-uv@v10
+      with:
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+
+    - name: Install buf
+      uses: bufbuild/buf-action@v1
+      with:
+        setup_only: true
+
+    - name: Install Rust
+      if: contains(format(',{0},', inputs.languages), ',rust,')
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install Java
+      if: contains(format(',{0},', inputs.languages), ',java,')
+      uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: "21"
+
+    - name: Install Gradle
+      if: contains(format(',{0},', inputs.languages), ',java,')
+      uses: gradle/actions/setup-gradle@v6
+
+    - name: Install Go
+      if: contains(format(',{0},', inputs.languages), ',go,')
+      uses: actions/setup-go@v7
+      with:
+        go-version: stable
+        cache: false
+
+    - name: Install Node.js
+      if: contains(format(',{0},', inputs.languages), ',javascript,')
+      uses: actions/setup-node@v7
+      with:
+        node-version: lts/*
+
+    - name: Sync project venv (uv.lock must be current)
+      shell: bash
+      run: uv sync --locked

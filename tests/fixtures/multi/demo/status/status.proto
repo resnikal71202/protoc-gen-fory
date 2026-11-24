@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package demo.status;
+
+import "fory/options.proto";
+
+option go_package = "example.com/demo/status;status";
+option java_package = "com.example.demo.status";
+
+enum Status {
+  option (fory.enum).id = 300;
+  STATUS_UNKNOWN = 0;
+  STATUS_OPEN = 1;
+  STATUS_PAID = 2;
+}

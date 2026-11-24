@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package shop;
+
+import "fory/options.proto";
+
+option go_package = "example.com/shop;shop";
+option java_package = "com.example.shop";
+option (fory.file).enable_auto_type_id = true;
+
+enum Currency {
+  option (fory.enum).id = 10;
+  CURRENCY_UNSPECIFIED = 0;
+  CURRENCY_EUR = 1;
+  CURRENCY_USD = 2;
+}
+
+message Item {
+  string name = 1;
+  Currency currency = 2;
+}
+
+message Shelf {
+  Item item = 1;
+  Catalog.Item catalog_item = 2;
+}
+
+message Catalog {
+  option (fory.message).id = 11;
+
+  // Shadows the top-level Item inside Catalog.
+  message Item {
+    string sku = 1;
+    Catalog.Section section = 2;
+    optional int32 stock = 3;
+  }
+
+  message Section {
+    enum Visibility {
+      VISIBILITY_UNSPECIFIED = 0;
+      VISIBILITY_PUBLIC = 1;
+    }
+    message Entry {
+      Catalog.Item item = 1;
+      Catalog.Section.Visibility visibility = 2;
+      map<string, Catalog.Section.Entry> children = 3;
+    }
+    string title = 1;
+    repeated Catalog.Section.Entry entries = 2;
+    oneof cover {
+      string url = 3;
+      bytes image = 4;
+      Catalog.Item featured = 5;
+    }
+  }
+
+  repeated Catalog.Item items = 1;
+  repeated Catalog.Section sections = 2;
+  Catalog.Section.Visibility default_visibility = 4;
+  map<string, Catalog.Item> by_sku = 5;
+  optional Currency currency = 6;
+  oneof selection {
+    Catalog.Item picked = 7;
+    Catalog.Section picked_section = 8;
+  }
+}

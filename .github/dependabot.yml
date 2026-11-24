@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Also proposes bumps of the exact fory-compiler pin; the nightly job
+  # against the latest version shows beforehand whether the adapter still works.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly

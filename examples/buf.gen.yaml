@@ -1,0 +1,36 @@
+# One plugin entry per target language. Run through uv (or poetry) so buf
+# finds protoc-gen-fory in the project venv:  uv run buf generate
+version: v2
+inputs:
+  - directory: proto
+    exclude_paths: [proto/fory]
+managed:
+  enabled: true
+  override:
+    # Managed mode works for Fory code too: these land in the generated code.
+    - file_option: java_package_prefix
+      value: com.acme
+    - file_option: go_package_prefix
+      value: example.com/acme/gen/go
+plugins:
+  # strategy: all gives one request for all files, like a single foryc run.
+  - local: protoc-gen-fory
+    out: gen/java
+    strategy: all
+    opt: [lang=java]
+  - local: protoc-gen-fory
+    out: gen/go
+    strategy: all
+    opt: [lang=go, go_module=example.com/acme/gen/go]
+  - local: protoc-gen-fory
+    out: gen/python
+    strategy: all
+    opt: [lang=python]
+  - local: protoc-gen-fory
+    out: gen/rust
+    strategy: all
+    opt: [lang=rust]
+  - local: protoc-gen-fory
+    out: gen/javascript
+    strategy: all
+    opt: [lang=javascript]

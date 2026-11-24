@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  detect:
+    name: Detect e2e languages
+    runs-on: ubuntu-latest
+    outputs:
+      langs: ${{ steps.matrix.outputs.langs }}
+      pairs: ${{ steps.matrix.outputs.pairs }}
+      proto_on_base: ${{ steps.base.outputs.proto_on_base }}
+    steps:
+      - uses: actions/checkout@v7
+      # Compile and roundtrip jobs exist only for languages with a tests/e2e/<lang>/ project.
+      - id: matrix
+        run: scripts/ci/e2e-matrix.sh pr | tee -a "$GITHUB_OUTPUT"
+      # buf breaking needs the module on the base branch; skip it on the PR that adds it.
+      - id: base
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          on_base=false
+          if [[ -n "$BASE_REF" ]]; then
+            git fetch --depth=1 origin "$BASE_REF"
+            git cat-file -e "FETCH_HEAD:proto/buf.yaml" 2>/dev/null && on_base=true
+          fi
+          echo "proto_on_base=$on_base" | tee -a "$GITHUB_OUTPUT"
+
+  buf:
+    name: buf (fory-options module)
+    needs: detect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: buf format / lint / breaking
+        uses: bufbuild/buf-action@v1
+        with:
+          input: proto
+          format: true
+          lint: true
+          breaking: ${{ github.event_name == 'pull_request' && needs.detect.outputs.proto_on_base == 'true' }}
+          breaking_against: ${{ github.event.repository.clone_url }}#format=git,ref=${{ github.event.pull_request.base.sha }},subdir=proto
+          push: false
+          pr_comment: false
+      - name: Checked-in fory/options_pb2 is up to date
+        run: |
+          buf generate
+          git add -N .
+          git diff --exit-code -- src/protoc_gen_fory/_gen \
+            || { echo "::error::src/protoc_gen_fory/_gen is stale. Run 'buf generate' and commit the result."; exit 1; }
+
+  test:
+    name: pytest (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Lower bound follows fory-compiler (PEP 604 annotations at runtime).
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit, adapter and golden tests (plugin vs. foryc, byte-identical)
+        run: uv run pytest --ignore=tests/e2e -v
+
+  lowest:
+    name: pytest (lowest protobuf)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.10"
+      # Install into the project venv: `uv run --with` would layer an extra env
+      # that neither pytest's script nor the plugin executable (both in .venv/bin) use.
+      - name: Downgrade to protobuf 5.29.3 (lower bound in pyproject.toml)
+        run: |
+          uv pip install 'protobuf==5.29.3'
+          uv run --no-sync python -c "import google.protobuf as p; assert p.__version__ == '5.29.3', p.__version__"
+      - name: pytest
+        env:
+          EXPECT_PROTOBUF: "5.29.3"
+        run: uv run --no-sync pytest --ignore=tests/e2e -q
+
+  typecheck:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: uv run mypy
+
+  compile:
+    name: compile (${{ matrix.lang }})
+    needs: [detect, test]
+    if: needs.detect.outputs.langs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: ${{ fromJSON(needs.detect.outputs.langs) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          languages: ${{ matrix.lang }}
+      - run: scripts/ci/compile.sh ${{ matrix.lang }}
+
+  roundtrip:
+    name: roundtrip (${{ matrix.writer }} -> ${{ matrix.reader }})
+    needs: [detect, compile]
+    if: needs.detect.outputs.pairs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Per PR: every language against Java as reference. Full matrix runs nightly.
+        include: ${{ fromJSON(needs.detect.outputs.pairs) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          languages: ${{ matrix.writer }},${{ matrix.reader }}
+      - run: scripts/ci/roundtrip.sh ${{ matrix.writer }} ${{ matrix.reader }}
+
+  # Single required check for branch protection.
+  ci-ok:
+    name: CI OK
+    needs: [detect, buf, test, lowest, typecheck, compile, roundtrip]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            [[ "$r" == success || "$r" == skipped ]] || exit 1
+          done

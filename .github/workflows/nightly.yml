@@ -1,0 +1,51 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The adapter builds fory_compiler's internal AST and calls its CLI functions.
+  # This job ignores the exact pin and catches API breaks before a bump.
+  latest-fory-compiler:
+    name: pytest against latest fory-compiler
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Upgrade fory-compiler past the pin
+        run: |
+          uv pip install --upgrade fory-compiler
+          uv pip show fory-compiler | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Unit, adapter and golden tests
+        run: uv run --no-sync pytest --ignore=tests/e2e -v
+
+  detect:
+    name: Detect e2e languages
+    runs-on: ubuntu-latest
+    outputs:
+      pairs: ${{ steps.matrix.outputs.pairs }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: matrix
+        run: scripts/ci/e2e-matrix.sh full | tee -a "$GITHUB_OUTPUT"
+
+  roundtrip-matrix:
+    name: roundtrip ${{ matrix.writer }} -> ${{ matrix.reader }}
+    needs: detect
+    if: needs.detect.outputs.pairs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.detect.outputs.pairs) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          languages: ${{ matrix.writer }},${{ matrix.reader }}
+      - run: scripts/ci/roundtrip.sh ${{ matrix.writer }} ${{ matrix.reader }}

@@ -1,0 +1,106 @@
+// Fory options for .proto files compiled with buf / protoc.
+//
+// Import this file and set options per level:
+//
+//   import "fory/options.proto";
+//
+//   option (fory.file).evolving = true;
+//
+//   message Node {
+//     option (fory.message).id = 100;
+//     Node parent = 1 [(fory.field).weak_ref = true];
+//     repeated Node children = 2 [(fory.field).ref = true];
+//   }
+//
+// protoc-gen-fory maps `(fory.<level>).<name>` to the `(fory).<name>` option
+// that foryc understands, so the Fory translator and generators see the same input.
+//
+// Extension number 50846 is from the range reserved for organization-internal use
+// (50000-99999). Before an upstream release it should be replaced by a number
+// registered in the global protobuf extension registry.
+syntax = "proto3";
+
+package fory;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FileOptions {
+  FileOptions file = 50846;
+}
+
+extend google.protobuf.MessageOptions {
+  MessageOptions message = 50846;
+}
+
+extend google.protobuf.FieldOptions {
+  FieldOptions field = 50846;
+}
+
+extend google.protobuf.EnumOptions {
+  EnumOptions enum = 50846;
+}
+
+// File-level options: `option (fory.file).<name> = ...;`
+message FileOptions {
+  // Default schema-evolution behavior for all messages in this file.
+  optional bool evolving = 1;
+  // Auto-generate type IDs when `(fory.message).id` is omitted (compiler default: true).
+  optional bool enable_auto_type_id = 2;
+  // Enable polymorphic serialization metadata by default.
+  optional bool polymorphism = 3;
+  // Generate Java records for all messages in this file.
+  optional bool use_record_for_java_message = 4;
+  // Go nested type naming: "underscore" (default) or "camelcase".
+  optional string go_nested_type_style = 5;
+  // Swift namespace style: "enum" (default) or "flatten".
+  optional string swift_namespace_style = 6;
+  // Rust: use chrono types for timestamp/date fields.
+  optional bool rust_use_chrono_temporal_types = 7;
+  // Kotlin package for generated code.
+  optional string kotlin_package = 8;
+}
+
+// Message-level options: `option (fory.message).<name> = ...;`
+message MessageOptions {
+  // Explicit type ID used for registration.
+  optional uint32 id = 1;
+  // Alternative name used for auto-ID hashing.
+  optional string alias = 2;
+  // Overrides the file-level `evolving` setting.
+  optional bool evolving = 3;
+  // Generate a Java record for this message.
+  optional bool use_record_for_java = 4;
+  // Mark the type as deprecated in generated code.
+  optional bool deprecated = 5;
+  // Overrides the package-based namespace.
+  optional string namespace = 6;
+}
+
+// Field-level options: `[(fory.field).<name> = ...]`
+message FieldOptions {
+  // Enable reference tracking. For repeated fields it applies to the elements,
+  // for maps to the values.
+  optional bool ref = 1;
+  // Treat the field as nullable (like `optional`).
+  optional bool nullable = 2;
+  // Weak pointer semantics (C++/Rust); implies `ref`.
+  optional bool weak_ref = 3;
+  // Rust ref carrier: true (default) uses Arc/ArcWeak, false uses Rc/RcWeak.
+  optional bool thread_safe_pointer = 4;
+  // Mark the field as deprecated in generated code.
+  optional bool deprecated = 5;
+  // Primitive encoding override: "tagged int64" or "tagged uint64".
+  optional string type = 6;
+  // Java: use a primitive array instead of a List for repeated scalars.
+  optional bool java_array = 7;
+}
+
+// Enum-level options: `option (fory.enum).<name> = ...;`
+message EnumOptions {
+  // Explicit type ID used for registration.
+  optional uint32 id = 1;
+  // Alternative name used for auto-ID hashing.
+  optional string alias = 2;
+  // Mark the type as deprecated in generated code.
+  optional bool deprecated = 3;
+}

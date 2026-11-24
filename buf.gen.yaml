@@ -1,0 +1,12 @@
+# Generates the Python bindings for fory/options.proto that the plugin uses
+# to read the extensions. The output is checked in; CI fails if it is stale.
+#   buf generate
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  # Gencode for protobuf >= 5.29 (matches the lower bound in pyproject.toml).
+  - remote: buf.build/protocolbuffers/python:v29.3
+    out: src/protoc_gen_fory/_gen
+  - remote: buf.build/protocolbuffers/pyi:v29.3
+    out: src/protoc_gen_fory/_gen

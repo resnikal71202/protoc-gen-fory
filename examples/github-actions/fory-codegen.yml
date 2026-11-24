@@ -1,0 +1,47 @@
+# Example workflow for projects that USE protoc-gen-fory.
+# Copy to .github/workflows/fory-codegen.yml in your project.
+#
+# Assumes: buf.yaml + buf.gen.yaml in the repo root, protoc-gen-fory as a uv
+# dev dependency (uv add --dev protoc-gen-fory), generated code checked in
+# under gen/. For Poetry, replace the uv steps with `poetry install --sync`
+# and `poetry run buf generate`.
+name: Fory codegen
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  proto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # buf breaking compares against main
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - run: buf format --diff --exit-code
+      - run: buf lint
+      - name: buf breaking
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against ".git#branch=origin/${{ github.base_ref }}"
+        # Note: buf breaking checks protobuf wire rules, not Fory schema evolution.
+
+      - name: Generate (protoc-gen-fory found via the venv on PATH)
+        run: uv run buf generate
+      - name: Generated code is up to date
+        run: |
+          git add -N gen/
+          git diff --exit-code -- gen/

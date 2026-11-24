@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package demo.common;
+
+option go_package = "example.com/demo/common;common";
+option java_package = "com.example.demo.common";
+
+message Money {
+  int64 units = 1;
+  string currency = 2;
+}

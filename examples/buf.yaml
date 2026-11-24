@@ -1,0 +1,15 @@
+# Example buf workspace for a project that generates Fory code.
+version: v2
+modules:
+  - path: proto
+# Once the options module is on the BSR, replace the vendored
+# proto/fory/options.proto with a dependency (then run `buf dep update`):
+# deps:
+#   - buf.build/<org>/fory-options
+lint:
+  use: [STANDARD]
+  ignore:
+    # Vendored with `protoc-gen-fory --options-proto > proto/fory/options.proto`.
+    - proto/fory
+breaking:
+  use: [FILE]

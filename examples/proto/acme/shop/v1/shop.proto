@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package acme.shop.v1;
+
+import "fory/options.proto";
+import "google/protobuf/timestamp.proto";
+
+// Evolving schemas tolerate added and removed fields between versions.
+option (fory.file).evolving = true;
+
+// A product in the catalog.
+message Product {
+  option (fory.message).id = 1001;
+
+  // Availability of a product.
+  enum Availability {
+    AVAILABILITY_UNSPECIFIED = 0;
+    AVAILABILITY_IN_STOCK = 1;
+    AVAILABILITY_SOLD_OUT = 2;
+  }
+
+  string sku = 1;
+  string name = 2;
+  int64 price_cents = 3 [(fory.field).type = "tagged int64"];
+  Product.Availability availability = 4;
+  repeated string tags = 5;
+}
+
+// A shopping cart; the same Product object may appear in several lines.
+message Cart {
+  option (fory.message).id = 1002;
+
+  // One line of the cart.
+  message Line {
+    Product product = 1 [(fory.field).ref = true];
+    uint32 quantity = 2;
+  }
+
+  string id = 1;
+  repeated Cart.Line lines = 2;
+  map<string, string> attributes = 3;
+  optional string coupon = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  oneof owner {
+    string user_id = 6;
+    string session_id = 7;
+  }
+}

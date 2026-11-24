@@ -1,0 +1,105 @@
+name: Release
+
+# Push a tag vX.Y.Z whose version matches pyproject.toml.
+# One-time setup:
+#   - PyPI: add a trusted publisher for this repo, workflow "release.yml", environment "pypi".
+#   - BSR:  add repository secret BUF_TOKEN (bot token with push rights to the module
+#           named in proto/buf.yaml, e.g. buf.build/<org>/fory-options).
+#   - GitHub: create environments "pypi" and "bsr" (optionally with required reviewers).
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build sdist and wheel
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Tag matches project version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(uv version --short)"
+          if [[ "$TAG" != "v$version" ]]; then
+            echo "::error::tag $TAG does not match pyproject.toml version $version"
+            exit 1
+          fi
+      - run: uv build
+      - name: Smoke test the wheel
+        run: |
+          uv run --isolated --no-project --with dist/*.whl -- \
+            python -c "import protoc_gen_fory, protoc_gen_fory.__main__"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/protoc-gen-fory/
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: astral-sh/setup-uv@v10
+      - run: uv publish --trusted-publishing always dist/*
+
+  bsr:
+    name: Push fory-options to the BSR
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: bsr
+    steps:
+      - uses: actions/checkout@v7
+      - id: module
+        run: |
+          if grep -Eq '^name:' proto/buf.yaml; then
+            echo "named=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::proto/buf.yaml has no 'name:' yet; skipping buf push"
+            echo "named=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.module.outputs.named == 'true'
+        uses: bufbuild/buf-action@v1
+        with:
+          input: proto
+          token: ${{ secrets.BUF_TOKEN }}
+          lint: false
+          format: false
+          breaking: false
+          push: true
+          pr_comment: false
+
+  github-release:
+    name: GitHub release
+    needs: [pypi, bsr]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes

@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package demo.order;
+
+import "demo/common/money.proto";
+import "demo/status/status.proto";
+import "fory/options.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "example.com/demo/order;order";
+option java_package = "com.example.demo.order";
+option (fory.file).evolving = true;
+
+message Order {
+  option (fory.message).id = 200;
+
+  message Line {
+    enum Kind {
+      KIND_UNKNOWN = 0;
+      KIND_ITEM = 1;
+      KIND_FEE = 2;
+    }
+    string sku = 1;
+    demo.common.Money price = 2;
+    Order.Line.Kind kind = 3;
+    uint32 quantity = 4;
+  }
+
+  string id = 1;
+  repeated Order.Line lines = 2 [(fory.field).ref = true];
+  map<string, demo.common.Money> totals = 3;
+  map<int32, Order.Line> lines_by_pos = 4;
+  optional string note = 5;
+  demo.status.Status status = 6;
+  oneof payment {
+    string card_token = 7;
+    Iban iban = 8;
+  }
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Duration ttl = 10;
+  int64 sequence = 11 [(fory.field).type = "tagged int64"];
+  Order.Line first_line = 12 [(fory.field).nullable = true];
+  Order.Line.Kind default_kind = 13;
+  repeated string tags = 14;
+  bytes blob = 15;
+  double ratio = 16;
+  float score = 17;
+  bool urgent = 18;
+  sint32 delta = 19;
+  sint64 big_delta = 20;
+  fixed32 f32 = 21;
+  fixed64 f64 = 22;
+  sfixed32 sf32 = 23;
+  sfixed64 sf64 = 24;
+  uint64 u64 = 25;
+  int32 i32 = 26;
+}
+
+message Iban {
+  option (fory.message).evolving = false;
+  string country = 1;
+  string number = 2;
+}
+
+message Tree {
+  Tree parent = 1 [(fory.field).weak_ref = true];
+  repeated Tree children = 2 [(fory.field).ref = true];
+  map<string, Tree> named = 3 [(fory.field).ref = true];
+}
