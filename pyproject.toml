@@ -3,7 +3,7 @@ name = "protoc-gen-fory"
 version = "0.1.0"
 description = "buf / protoc plugin that generates Apache Fory code from .proto files"
 readme = "README.md"
-license = "Apache-2.0"
+license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 # fory-compiler uses PEP 604 annotations (str | None) at runtime.
 requires-python = ">=3.10"

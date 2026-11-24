@@ -186,7 +186,3 @@ Layout:
 | `tests/e2e/` | generated code against the Fory runtimes (compile + roundtrip) |
 
 CI is described in [.github/CI.md](.github/CI.md).
-
-## License
-
-Apache License 2.0
