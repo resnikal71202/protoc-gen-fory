@@ -1,80 +1,91 @@
 name: Release
 
-# Push a tag vX.Y.Z whose version matches pyproject.toml.
+# Every push to main is a release of the version in pyproject.toml:
+#   CI (incl. the package build) -> fail if v<version> already exists
+#   -> PyPI -> BSR -> tag v<version> + GitHub release (CHANGELOG.md section as notes).
+# A push to main without a new version therefore fails. Bump the version and
+# add a dated CHANGELOG.md section in the same change.
+#
+# The tag is created last, so it marks a complete release. If a run fails after
+# the PyPI upload, rerun it: existing PyPI files are skipped.
+#
 # One-time setup:
-#   - PyPI: add a trusted publisher for this repo, workflow "release.yml", environment "pypi".
-#   - BSR:  add repository secret BUF_TOKEN (bot token with push rights to the module
-#           named in proto/buf.yaml, e.g. buf.build/<org>/fory-options).
-#   - GitHub: create environments "pypi" and "bsr" (optionally with required reviewers).
+#   - PyPI: trusted publisher for this repo, workflow "release.yml", environment "pypi".
+#   - BSR:  `name:` in proto/buf.yaml and repository secret BUF_TOKEN (skipped until then).
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch: # e.g. to retry after setting up the PyPI trusted publisher
 
 permissions:
   contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  build:
-    name: Build sdist and wheel
-    needs: ci
+  check:
+    name: Version not released yet
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.exists.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.4.0 # upstream has no floating major tag
-      - name: Tag matches project version
+      - id: version
+        run: echo "version=$(uv version --short)" | tee -a "$GITHUB_OUTPUT"
+      - id: exists
+        name: Fail if v<version> already exists
         env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          version="$(uv version --short)"
-          if [[ "$TAG" != "v$version" ]]; then
-            echo "::error::tag $TAG does not match pyproject.toml version $version"
-            exit 1
-          fi
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python3 -I scripts/ci/release_check.py "$VERSION"
       - name: CHANGELOG.md has a dated section for the version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version="$(uv version --short)"
-          python3 -I scripts/ci/changelog.py release "$version"
-          python3 -I scripts/ci/changelog.py notes "$version" > dist-notes.md
+          python3 -I scripts/ci/changelog.py release "$VERSION"
+          python3 -I scripts/ci/changelog.py notes "$VERSION" > release-notes.md
       - uses: actions/upload-artifact@v7
         with:
           name: release-notes
-          path: dist-notes.md
-          if-no-files-found: error
-      - run: uv build
-      - name: Smoke test the wheel
-        run: |
-          uv run --isolated --no-project --with dist/*.whl -- \
-            python -c "import protoc_gen_fory, protoc_gen_fory.__main__"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
+          path: release-notes.md
           if-no-files-found: error
 
   pypi:
     name: Publish to PyPI
-    needs: build
+    needs: [ci, check]
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/protoc-gen-fory/
+      url: https://pypi.org/project/protoc-gen-fory/${{ needs.check.outputs.version }}/
     permissions:
       id-token: write # trusted publishing
     steps:
+      - name: CI built the same version
+        env:
+          BUILT: ${{ needs.ci.outputs.version }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          [[ "$BUILT" == "$VERSION" ]] || { echo "::error::CI built $BUILT, release is $VERSION"; exit 1; }
+      # The wheel and sdist that CI built and smoke-tested.
       - uses: actions/download-artifact@v8
         with:
-          name: dist
+          name: dist-${{ needs.check.outputs.version }}
           path: dist/
       - uses: astral-sh/setup-uv@v10.4.0 # upstream has no floating major tag
-      - run: uv publish --trusted-publishing always dist/*
+      - run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*
 
   bsr:
     name: Push fory-options to the BSR
-    needs: ci
+    needs: [ci, check]
     runs-on: ubuntu-latest
     environment: bsr
     steps:
@@ -99,21 +110,27 @@ jobs:
           pr_comment: false
 
   github-release:
-    name: GitHub release
-    needs: [pypi, bsr]
+    name: Tag and GitHub release
+    needs: [check, pypi, bsr]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: dist
+          name: dist-${{ needs.check.outputs.version }}
           path: dist/
       - uses: actions/download-artifact@v8
         with:
           name: release-notes
-      - env:
+      - name: Create tag and release
+        env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        # Notes are the version's CHANGELOG.md section.
-        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file dist-notes.md
+          TAG: v${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          flags=()
+          [[ "$PRERELEASE" == "true" ]] && flags+=(--prerelease)
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TAG" --notes-file release-notes.md "${flags[@]}"

@@ -2,11 +2,16 @@ name: CI
 
 on:
   push:
-    # Every branch gets a build: main as the plain version, others as
-    # <version>+<branch>.<run number> (see scripts/ci/build_version.py).
-    branches: ["**"]
+    # Every branch gets a build as <version>+<branch>.<run number>
+    # (scripts/ci/build_version.py). main runs through release.yml, which
+    # calls this workflow and builds the plain version.
+    branches-ignore: [main]
   pull_request:
   workflow_call:
+    outputs:
+      version:
+        description: Version of the package that the build job uploaded as dist-<version>
+        value: ${{ jobs.version.outputs.version }}
   workflow_dispatch:
 
 permissions:
@@ -175,8 +180,8 @@ jobs:
       - uses: astral-sh/setup-uv@v10.4.0 # upstream has no floating major tag
       - id: v
         env:
-          # PRs build the head branch; tags (release) keep the plain version.
-          BRANCH: ${{ github.ref_type == 'tag' && 'main' || github.head_ref || github.ref_name }}
+          # PRs build the head branch.
+          BRANCH: ${{ github.head_ref || github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           base="$(uv version --short)"

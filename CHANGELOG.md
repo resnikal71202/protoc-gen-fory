@@ -4,11 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-The version in `pyproject.toml` must have a section here (CI checks it). A
-release tag needs that section with a date instead of `Unreleased`, and the
-section becomes the GitHub release notes.
+The version in `pyproject.toml` must have a section here (CI checks it).
+Every push to `main` releases that version, so the section needs a date
+instead of `Unreleased` by then; it becomes the GitHub release notes.
 
-## [0.1.0] - Unreleased
+## [0.1.0a1] - 2026-11-24
+
+First pre-release. The option syntax and the extension number (50846) are not
+final yet; install with `--prerelease allow` (uv) or `--pre` (pip).
 
 ### Added
 
@@ -26,4 +29,4 @@ section becomes the GitHub release notes.
 - `protoc-gen-fory-migrate`: rewrites `(fory).x` to the new option syntax.
 - `protoc-gen-fory --options-proto` prints the options file for vendoring.
 
-[0.1.0]: https://github.com/resnikal71202/protoc-gen-fory/commits/main
+[0.1.0a1]: https://github.com/resnikal71202/protoc-gen-fory/releases/tag/v0.1.0a1

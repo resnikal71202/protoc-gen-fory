@@ -32,14 +32,16 @@ developer and CI generates the same code.
 With uv (recommended):
 
 ```bash
-uv add --dev protoc-gen-fory
+uv add --dev --prerelease allow protoc-gen-fory
 ```
 
 With Poetry:
 
 ```bash
-poetry add --group dev protoc-gen-fory
+poetry add --group dev --allow-prereleases protoc-gen-fory
 ```
+
+The current releases are pre-releases (`0.1.0a1`): the option syntax may still change.
 
 `uv run` / `poetry run` put the venv's `bin/` on `PATH`, so buf finds
 `local: protoc-gen-fory` without a path.

@@ -1,6 +1,6 @@
 [project]
 name = "protoc-gen-fory"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "buf / protoc plugin that generates Apache Fory code from .proto files"
 readme = "README.md"
 license = "GPL-3.0-or-later"

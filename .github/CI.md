@@ -2,9 +2,9 @@
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `ci.yml` | push to any branch, PR, called by release | buf format/lint/breaking on `proto/`, `_gen/` up to date, pytest on Python 3.10–3.14, pytest with the lowest protobuf (5.29.3), mypy, compile + roundtrip for every language with an e2e project |
+| `ci.yml` | push to any branch except `main`, PR, called by release | buf format/lint/breaking on `proto/`, `_gen/` up to date, pytest on Python 3.10–3.14, pytest with the lowest protobuf (5.29.3), mypy, compile + roundtrip for every language with an e2e project |
 | `nightly.yml` | daily 02:17 UTC, manual | pytest against the newest `fory-compiler` (ignores the pin), full writer × reader roundtrip matrix |
-| `release.yml` | tag `v*` | runs CI, checks tag == version, `uv build`, publishes to PyPI (trusted publishing), `buf push` to the BSR, GitHub release |
+| `release.yml` | push to `main`, manual | runs CI, fails if `v<version>` already exists, publishes the CI-built package to PyPI (trusted publishing), `buf push` to the BSR, then creates tag `v<version>` and the GitHub release |
 
 Branch protection only needs `CI OK`.
 
@@ -16,7 +16,6 @@ Every CI run builds the package and uploads it as artifact `dist-<version>`:
 |---|---|
 | `main` | version from `pyproject.toml`, e.g. `0.1.0` |
 | other branch / PR | `<version>+<branch>.<run number>`, e.g. `0.1.0+feature.foo.42` |
-| tag `v*` (release) | version from `pyproject.toml` |
 
 The branch name is lowercased and every run of other characters becomes `.`,
 as PEP 440 requires (`-` in a local label is normalized to `.` anyway).
@@ -24,15 +23,28 @@ Local versions cannot be uploaded to PyPI, so branch builds never get there.
 Logic: `scripts/ci/build_version.py`.
 
 `CHANGELOG.md` (Keep a Changelog) must have a section for the version in
-`pyproject.toml`, or CI fails. For a release the section needs a date
-(`## [0.1.0] - 2026-12-01`), and its text becomes the GitHub release notes.
-Logic: `scripts/ci/changelog.py`.
+`pyproject.toml`, or CI fails. Logic: `scripts/ci/changelog.py`.
 
-Releasing:
+## Releases
 
-1. In `CHANGELOG.md`, replace `Unreleased` with the date, and start the next
-   version's section if you like.
-2. Commit, then `git tag v<version>` and push the tag.
+Every push to `main` releases the version in `pyproject.toml`:
+
+1. CI runs, including the package build (`dist-<version>`).
+2. `scripts/ci/release_check.py` fails the run if the tag `v<version>` already
+   exists. A push to `main` without a new version therefore fails on purpose.
+   It also needs a dated CHANGELOG section (`## [0.2.0] - 2026-12-01`).
+3. The CI-built wheel and sdist go to PyPI, and the options module goes to the BSR.
+4. Last, the tag `v<version>` and the GitHub release are created, with the
+   CHANGELOG section as notes. Pre-release versions (`a`, `b`, `rc`, `.dev`) are
+   marked as pre-release.
+
+So every change for `main` (a PR) also bumps `version` in `pyproject.toml`
+(`uv version --bump patch` or `uv version 0.2.0`) and adds a dated CHANGELOG section.
+
+Since the tag comes last, it means "fully released". If a run fails after the
+PyPI upload (e.g. at the BSR), just rerun it: the version is on PyPI but has
+no tag yet, so the check only warns, and `uv publish --check-url` skips the
+existing files.
 
 ## What the tests cover
 

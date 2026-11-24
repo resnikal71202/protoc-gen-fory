@@ -106,15 +106,72 @@ class TestChangelog:
         with pytest.raises(changelog.ChangelogError, match=r"no section '## \[9.9.9\]'"):
             changelog.section(TEXT, "9.9.9", require_date=False)
 
-    def test_repo_changelog_covers_the_project_version(self) -> None:
+    @staticmethod
+    def project_version() -> str:
         # No tomllib: it needs Python 3.11, CI also runs 3.10.
         match = re.search(r'^version = "([^"]+)"', (helpers.REPO / "pyproject.toml").read_text(), re.M)
         assert match
-        changelog.section(changelog.CHANGELOG.read_text(), match.group(1), require_date=False)
+        return match.group(1)
+
+    def test_repo_changelog_covers_the_project_version(self) -> None:
+        changelog.section(changelog.CHANGELOG.read_text(), self.project_version(), require_date=False)
 
     def test_cli(self) -> None:
         script = str(SCRIPTS / "changelog.py")
-        ok = subprocess.run([sys.executable, "-I", script, "check", "0.1.0"], capture_output=True, text=True)
+        version = self.project_version()
+        ok = subprocess.run([sys.executable, "-I", script, "check", version], capture_output=True, text=True)
         assert ok.returncode == 0, ok.stdout
         bad = subprocess.run([sys.executable, "-I", script, "check", "9.9.9"], capture_output=True, text=True)
         assert bad.returncode == 1 and "::error file=CHANGELOG.md::" in bad.stdout
+
+
+release_check = _load("release_check")
+
+
+class TestReleaseCheck:
+    @staticmethod
+    def fetcher(statuses: dict[str, int]):  # type: ignore[no-untyped-def]
+        calls: list[tuple[str, dict[str, str]]] = []
+
+        def fetch(url: str, headers: dict[str, str]) -> int:
+            calls.append((url, headers))
+            for fragment, status in statuses.items():
+                if fragment in url:
+                    return status
+            raise AssertionError(f"unexpected URL {url}")
+
+        fetch.calls = calls  # type: ignore[attr-defined]
+        return fetch
+
+    def test_new_version_passes(self) -> None:
+        fetch = self.fetcher({"git/ref/tags/v0.2.0": 404, "pypi.org": 404})
+        assert release_check.check("0.2.0", "o/r", "p", "tok", fetch) == ([], [])
+        assert fetch.calls[0][1]["Authorization"] == "Bearer tok"
+
+    def test_existing_tag_fails(self) -> None:
+        fetch = self.fetcher({"git/ref/tags/v0.1.0": 200, "pypi.org": 200})
+        errors, warnings = release_check.check("0.1.0", "o/r", "p", None, fetch)
+        assert len(errors) == 1 and "release v0.1.0 already exists in o/r" in errors[0]
+        assert warnings == []
+
+    def test_on_pypi_without_tag_is_an_interrupted_release(self) -> None:
+        fetch = self.fetcher({"git/ref/tags/": 404, "pypi.org": 200})
+        errors, warnings = release_check.check("0.1.0", "o/r", "p", None, fetch)
+        assert errors == []
+        assert "finishing an interrupted release" in warnings[0]
+
+    def test_unexpected_status_fails(self) -> None:
+        fetch = self.fetcher({"git/ref/tags/": 403, "pypi.org": 503})
+        errors, _ = release_check.check("0.1.0", "o/r", "p", None, fetch)
+        assert len(errors) == 2
+
+    def test_local_versions_are_never_released(self) -> None:
+        errors, _ = release_check.check("0.1.0+feature.1", "o/r", "p", None, self.fetcher({}))
+        assert "local version" in errors[0]
+
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [("0.1.0a1", True), ("1.0.0rc2", True), ("1.0.0b3", True), ("1.0.0.dev4", True), ("1.0.0", False)],
+    )
+    def test_prerelease(self, version: str, expected: bool) -> None:
+        assert release_check.is_prerelease(version) is expected
