@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.4.0 # upstream has no floating major tag
       - name: Tag matches project version
         env:
           TAG: ${{ github.ref_name }}
@@ -59,7 +59,7 @@ jobs:
         with:
           name: dist
           path: dist/
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.4.0 # upstream has no floating major tag
       - run: uv publish --trusted-publishing always dist/*
 
   bsr:
